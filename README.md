@@ -13,7 +13,7 @@ This project is a modified version based on [Arielfy's FancyCompass](https://git
 - **Entity Radar**: Rotates with the camera, displaying range-faded entity dots (PCs / NPCs / mobs / pets / trusts).
 - **HUD Integrations**:
   - Optionally hides FFXI's stock HUD compass + clock.
-  - Optionally anchors to [FancyChat](https://github.com/Arielfy/fancychat).
+  - Optionally anchors to [FancyChat] ((https://github.com/ariel-logos/FancyCompass)).
   - Optionally hides itself to keep the space clear when game menus appear.
 
 ## Usage
