@@ -1,23 +1,26 @@
 # FancyCompass
 
-A compass/clock replacement addon for Ashita v4.
+A customized, ISAC-style tactical compass/clock replacement addon for Ashita v4.
 
-- Rotates with the camera like the original, plus range-faded entity dots (PCs / NPCs / mobs / pets / trusts)
-- Live clock, weather, and map coordinates
-- Optionally anchors to [FancyChat](https://github.com/Arielfy/fancychat)
-- Optionally hides FFXI's stock HUD compass + clock
-- Optionally hides itself to keep the space clear where game menus appear
-- Optimized entity lookup — better performance than stock
-- Fully customizable colors and alpha
+This project is a modified version based on [Arielfy's FancyCompass](https://github.com/Arielfy).
 
-## Showcase
+## Key Features
 
-https://github.com/user-attachments/assets/6e0e4b51-c9c7-4eda-8cc7-f8d941fc903e
+- **Tactical HUD Design**: Sleek arcs and reticles inspired by modern tactical interfaces.
+- **Custom Indicators**: Added a directional North (▲) arrow and player forward pointer.
+- **Minimalist Status Display**: Clean display for Vana'diel time, day element icon, and map coordinates.
+- **Customizable Toggles**: Easily show/hide moon phase, activities, and coordinate display via settings.
+- **Entity Radar**: Rotates with the camera, displaying range-faded entity dots (PCs / NPCs / mobs / pets / trusts).
+- **HUD Integrations**:
+  - Optionally hides FFXI's stock HUD compass + clock.
+  - Optionally anchors to [FancyChat](https://github.com/Arielfy/fancychat).
+  - Optionally hides itself to keep the space clear when game menus appear.
 
 ## Usage
+/fancycompass (or /fcompass)
+Open the configuration panel using:
 
-```
-/addon load fancycompass
-```
+## Credits & Acknowledgments
 
-Then `/fancycompass` (or `/fcompass`) to open the settings panel.
+- Original addon and framework by **Arielfy**.
+- Modified & maintained by **purya-mochi**.
