@@ -1,6 +1,6 @@
 addon.name    = 'FancyCompass'
 addon.author  = 'purya-mochi (Original: Arielfy)'
-addon.version = '1.0'
+addon.version = '1.1'
 addon.desc    = 'Compass, HUD radar, and tracker'
 addon.link    = ''
 
@@ -34,8 +34,21 @@ ffi.cdef[[
 ]]
 local D3DX = ffi.C
 
-local _act_tex  = {}
-local _act_keep = {}
+local _act_tex   = {}
+local _act_keep  = {}
+local _elem_tex  = {}
+local _elem_keep = {}
+
+local ELEM_NAMES = {
+    [0] = 'fire',
+    [1] = 'earth',
+    [2] = 'water',
+    [3] = 'wind',
+    [4] = 'ice',
+    [5] = 'thunder',
+    [6] = 'light',
+    [7] = 'dark',
+}
 
 local function load_activity_texture(name, filename)
     local ptr  = ffi.new('IDirect3DTexture8*[1]')
@@ -45,6 +58,19 @@ local function load_activity_texture(name, filename)
         d3d.gc_safe_release(tex)
         _act_keep[name] = tex
         _act_tex[name]  = tonumber(ffi.cast('uint32_t', tex))
+    end
+end
+
+local function load_element_textures()
+    for id, name in pairs(ELEM_NAMES) do
+        local ptr  = ffi.new('IDirect3DTexture8*[1]')
+        local path = ('%s\\imgs\\elements\\%s.png'):format(addon.path, name)
+        if D3DX.D3DXCreateTextureFromFileA(d3d8dev, path, ptr) == 0 then
+            local tex = ffi.new('IDirect3DTexture8*', ptr[0])
+            d3d.gc_safe_release(tex)
+            _elem_keep[name] = tex
+            _elem_tex[id]    = tonumber(ffi.cast('uint32_t', tex))
+        end
     end
 end
 
@@ -207,10 +233,10 @@ local default_cfg = T{
     dot_size         = 3,
     clock_font_size  = 16,
     show_pets        = true,
-    show_moon        = true,  -- 月齢情報の表示
-    show_activities  = true,  -- 釣果・チョコボ掘りの表示
+    show_moon        = true,
+    show_activities  = true,
     hide_ingame      = true,
-    anchor_to_chat   = false, -- デフォルト単体運用
+    anchor_to_chat   = false,
     anchor_window    = 1,
     anchor_offset_x  = 0,
     anchor_offset_y  = -10,
@@ -301,6 +327,7 @@ ashita.events.register('load', 'compass_load', function()
 
     load_activity_texture('fish', 'fish.png')
     load_activity_texture('dig',  'dig.png')
+    load_element_textures()
 
     gdi:set_auto_render(false)
     local f_size   = cfg.clock_font_size or 16
@@ -409,7 +436,6 @@ ashita.events.register('d3d_present', 'compass_present', function()
         draw_oval(r * 1.14, C_DARK, 1.0)
 
         -- メインの分割太アークリング (北を軸に同期)
-
         local arc_segs  = 16
         local arc_r     = r * 0.88
         local arc_thick = math.max(3.5, 4.5 * size_scale)
@@ -563,7 +589,7 @@ ashita.events.register('d3d_present', 'compass_present', function()
             end
         end
 
---        =================================================================
+        -- =================================================================
         -- 追加パーツ: 北(N)ゲートのミニ三角 & 自キャラ正面ポインター
         -- =================================================================
         -- 1. 北(N) ゲート直下のミニ三角インジケーター (▲)
@@ -587,10 +613,8 @@ ashita.events.register('d3d_present', 'compass_present', function()
         do
             local ptr_in  = r * 0.28
             local ptr_out = r * 0.44
-            -- 画面真上（cy から上方向へ直線の爪）
             dl:AddLine({ cx, cy - ptr_in * tilt }, { cx, cy - ptr_out * tilt }, C_ORANGE, 1.6)
         end
-        
 
         -- =================================================================
         -- 下部ステータス表示 (行ごとの表示制御対応)
@@ -605,15 +629,28 @@ ashita.events.register('d3d_present', 'compass_present', function()
         local day_r   = (sh * 0.5) * 0.75
         local day_cx  = left_edge + day_r + 2
         local day_cy  = row_top + sh * 0.5
-        local stamp_x = left_edge + 2 * day_r + 8 * size_scale
+        local stamp_x = left_edge + sh + 6 * size_scale
 
-        -- 1行目: 曜日マーク + ヴァナ時間・座標 (常に表示)
-        dl:AddCircleFilled({ day_cx, day_cy }, day_r, vana.DAY_COLORS[vana_day] or 0xFFEEEEEE, 24)
-        dl:AddCircle({ day_cx, day_cy }, day_r, 0xCC000000, 24, 1.0)
+        -- 1行目: 曜日アイコン (game-icons.net素材) + ヴァナ時間・座標
+        local elem_tex = _elem_tex[vana_day]
+        local icon_sz  = sh
 
-        local mx, my = imgui.GetMousePos()
-        if (mx - day_cx)^2 + (my - day_cy)^2 <= day_r^2 then
-            imgui.SetTooltip(vana.DAY_NAMES[vana_day] or 'Unknown')
+        if elem_tex then
+            local icon_x1 = left_edge
+            local icon_y1 = row_top + 2
+            dl:AddImage(elem_tex, { icon_x1, icon_y1 }, { icon_x1 + icon_sz, icon_y1 + icon_sz })
+            local mx, my = imgui.GetMousePos()
+            if mx >= icon_x1 and mx <= icon_x1 + icon_sz and my >= icon_y1 and my <= icon_y1 + icon_sz then
+                imgui.SetTooltip(vana.DAY_NAMES[vana_day] or 'Unknown')
+            end
+        else
+            -- 読み込めていない時のフォールバック（丸ドット）
+            dl:AddCircleFilled({ day_cx, day_cy }, day_r, vana.DAY_COLORS[vana_day] or 0xFFEEEEEE, 24)
+            dl:AddCircle({ day_cx, day_cy }, day_r, 0xCC000000, 24, 1.0)
+            local mx, my = imgui.GetMousePos()
+            if (mx - day_cx)^2 + (my - day_cy)^2 <= day_r^2 then
+                imgui.SetTooltip(vana.DAY_NAMES[vana_day] or 'Unknown')
+            end
         end
 
         if clock_font_obj then
@@ -632,7 +669,7 @@ ashita.events.register('d3d_present', 'compass_present', function()
         local trend_str = is_waxing and '︿' or '﹀'
 
         if cfg.show_moon then
-            draw_moon_icon(dl, day_cx, next_y + sub_h * 0.5, day_r, moon_phase, is_waxing)
+            draw_moon_icon(dl, left_edge + icon_sz * 0.5, next_y + sub_h * 0.5, day_r, moon_phase, is_waxing)
             if moon_font_obj then
                 moon_font_obj:set_visible(true)
                 moon_font_obj:set_position_x(stamp_x)
@@ -733,12 +770,10 @@ ashita.events.register('d3d_present', 'compass_settings_ui', function()
             cfg.show_pets = not cfg.show_pets; changed = true
         end
 
-        -- 追加: 月齢表示トグル
         if imgui.Checkbox('Show moon phase', { cfg.show_moon }) then
             cfg.show_moon = not cfg.show_moon; changed = true
         end
 
-        -- 追加: 釣果・チョコボ掘り表示トグル
         if imgui.Checkbox('Show activities (Fishing & Digging)', { cfg.show_activities }) then
             cfg.show_activities = not cfg.show_activities; changed = true
         end
@@ -805,6 +840,8 @@ ashita.events.register('unload', 'compass_unload', function()
     dig_font_obj   = nil
     for k in pairs(_act_keep) do _act_keep[k] = nil end
     for k in pairs(_act_tex) do _act_tex[k] = nil end
+    for k in pairs(_elem_keep) do _elem_keep[k] = nil end
+    for k in pairs(_elem_tex) do _elem_tex[k] = nil end
     gdi:destroy_interface()
 end)
 
