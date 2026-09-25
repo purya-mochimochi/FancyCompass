@@ -1,6 +1,6 @@
 # FancyCompass
 
-A customized, ISAC-style tactical compass/clock replacement addon for Ashita v4.
+A customized compass/clock replacement addon for Ashita v4.
 
 This project is a modified version based on [Arielfy's FancyCompass](https://github.com/Arielfy).
 
