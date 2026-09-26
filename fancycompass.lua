@@ -109,55 +109,53 @@ local MOON_PHASE_INFO = {
 local VANA_EPOCH_OFFSET = 92514960
 local EARTH_SECONDS_PER_VANA_DAY = 3456
 
--- FFXI標準 84日周期・完全同期計算
--- FFXI標準 84日周期・公式月齢完全一致
 local function calculate_moon_data()
     local raw = os.time() + VANA_EPOCH_OFFSET
     local total_days = math.floor(raw / EARTH_SECONDS_PER_VANA_DAY)
     local cycle_days = 84
 
-    -- 84日周期インデックス (0 = 新月)
-    local cycle_val = (total_days + 26) % cycle_days
-    local signed_percent = (((cycle_val) - (cycle_days / 2)) / (cycle_days / 2)) * 100
-    local percent = math.floor(math.abs(signed_percent) + 0.5)
-    local is_waxing = (signed_percent >= 0)
+    -- 84日周期 (0日目 = 新月 0% / 42日目 = 満月 100%)
+    local day = (total_days + 68) % cycle_days
 
+    local is_waxing = (day < 42)
+
+    local percent = math.floor((1 - math.abs((day - 42) / 42)) * 100 + 0.5)
+
+    -- 日数による12段階の完全確定判定
     local phase = 0
     if is_waxing then
-        -- 満ちていく側（新月→満月）
-        if percent <= 5 then
-            phase = 0  -- 新月 (0%〜5%)
-        elseif percent <= 38 then
-            phase = 1  -- 三日月 (7%〜38%)
-        elseif percent <= 45 then
+        -- 上弦側 (新月 → 満月)
+        if day <= 1 then
+            phase = 0  -- 新月 (0%〜2%)
+        elseif day <= 16 then
+            phase = 1  -- 三日月 (5%〜38%)
+        elseif day <= 19 then
             phase = 2  -- 七日月 (40%〜45%)
-        elseif percent <= 55 then
+        elseif day <= 23 then
             phase = 3  -- 上弦の月 (48%〜55%)
-        elseif percent <= 88 then
+        elseif day <= 37 then
             phase = 4  -- 十日夜 (57%〜88%)
-        elseif percent <= 95 then
+        elseif day <= 40 then
             phase = 5  -- 十三夜 (90%〜95%)
         else
             phase = 6  -- 満月 (98%〜100%)
         end
     else
-        -- 欠けていく側（満月→新月）
-        if percent >= 98 then
-            phase = 6  -- 満月 (98%〜100%)
-        elseif percent >= 90 then
-            phase = 7  -- 十六夜 (90%〜95%)
-        elseif percent >= 57 then
-            phase = 8  -- 居待月 (57%〜88%)
-        elseif percent >= 48 then
-            phase = 9  -- 下弦の月 (48%〜55%)
-        elseif percent >= 24 then
-            -- 45% 〜 24% は「二十日余月」 (29% もここに入る)
-            phase = 10 -- 二十日余月
-        elseif percent >= 7 then
-            -- 21% 〜 7% は「二十六夜」
-            phase = 11 -- 二十六夜
+        -- 下弦側 (満月 → 新月)
+        if day <= 43 then
+            phase = 6  -- 満月 (100%〜98%)
+        elseif day <= 46 then
+            phase = 7  -- 十六夜 (95%〜90%)
+        elseif day <= 60 then
+            phase = 8  -- 居待月 (88%〜57%)
+        elseif day <= 64 then
+            phase = 9  -- 下弦の月 (55%〜48%)
+        elseif day <= 68 then
+            phase = 10 -- 二十日余月 (45%〜31%)
+        elseif day <= 82 then
+            phase = 11 -- 二十六夜 (29%〜5%) ← いまここ！
         else
-            phase = 0  -- 新月 (5%〜0%)
+            phase = 0  -- 新月 (83日目: 2%〜0%)
         end
     end
 
