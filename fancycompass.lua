@@ -1,6 +1,6 @@
 addon.name    = 'FancyCompass'
 addon.author  = 'purya-mochi (Original: Arielfy)'
-addon.version = '1.1'
+addon.version = '1.31'
 addon.desc    = 'Compass, HUD radar, and tracker'
 addon.link    = ''
 
@@ -69,16 +69,15 @@ local JP_DAY_CHARS = {
     [7] = '闇',
 }
 
--- 属性カラー（純正風）
 local JP_DAY_COLORS = {
-    [0] = 0xFFFF4433, -- 火: 赤
-    [1] = 0xFFDDAA44, -- 土: 黄土
-    [2] = 0xFF3399FF, -- 水: 青
-    [3] = 0xFF44EE55, -- 風: 緑
-    [4] = 0xFF66FFFF, -- 氷: 水色
-    [5] = 0xFFFF66FF, -- 雷: 紫
-    [6] = 0xFFFFFF77, -- 光: 白黄
-    [7] = 0xFF9966FF, -- 闇: 紫
+    [0] = 0xFFFF3333, -- 火: レッド
+    [1] = 0xFFDDAA33, -- 土: イエローアンバー
+    [2] = 0xFF2299FF, -- 水: ディープブルー
+    [3] = 0xFF44EE55, -- 風: エメラルドグリーン
+    [4] = 0xFF99EEFF, -- 氷: ペールシアン・アイスブルー (黄色化を解消)
+    [5] = 0xFFFF66FF, -- 雷: マゼンタパープル
+    [6] = 0xFFFFFF99, -- 光: ペールゴールド・ホワイト
+    [7] = 0xFF8855AA, -- 闇: ダークバイオレット
 }
 
 local cfg
@@ -90,7 +89,7 @@ local patch_done = false
 local login_time = 0
 
 -- -------------------------------------------------------------------------
--- 月齢・釣果・チョコボ掘りデータ
+-- FFXI 公式 12段階 月齢・釣果・チョコボ掘りデータ
 -- -------------------------------------------------------------------------
 local MOON_PHASE_INFO = {
     [0]  = { name = '新月',     fish = '︿',  fish_col = 0xFF55FF55, dig = '︽',  dig_col = 0xFF55FF55 },
@@ -110,33 +109,55 @@ local MOON_PHASE_INFO = {
 local VANA_EPOCH_OFFSET = 92514960
 local EARTH_SECONDS_PER_VANA_DAY = 3456
 
+-- FFXI標準 84日周期・完全同期計算
 local function calculate_moon_data()
     local raw = os.time() + VANA_EPOCH_OFFSET
     local total_days = math.floor(raw / EARTH_SECONDS_PER_VANA_DAY)
     local cycle_days = 84
-    local signed_percent = ((((total_days + 26) % cycle_days) - (cycle_days / 2)) / (cycle_days / 2)) * 100
 
-    local phase = 0
-    if signed_percent >= 7 and signed_percent <= 38 then
-        phase = 1
-    elseif signed_percent >= 40 and signed_percent <= 55 then
-        phase = 2
-    elseif signed_percent >= 57 and signed_percent <= 88 then
-        phase = 5
-    elseif signed_percent >= 90 or signed_percent <= -95 then
-        phase = 6
-    elseif signed_percent >= -93 and signed_percent <= -62 then
-        phase = 7
-    elseif signed_percent >= -60 and signed_percent <= -45 then
-        phase = 9
-    elseif signed_percent >= -43 and signed_percent <= -12 then
-        phase = 11
-    else
-        phase = 0
-    end
-
+    -- 84日周期インデックス (0 = 新月 100%)
+    -- 公式周期: 0〜41日は新月〜満月(Waxing)、42〜83日は満月〜新月(Waning)
+    local cycle_val = (total_days + 26) % cycle_days
+    local signed_percent = (((cycle_val) - (cycle_days / 2)) / (cycle_days / 2)) * 100
     local percent = math.floor(math.abs(signed_percent) + 0.5)
     local is_waxing = (signed_percent >= 0)
+
+    local phase = 0
+    if is_waxing then
+        if percent <= 5 then
+            phase = 0  -- 新月
+        elseif percent <= 38 then
+            phase = 1  -- 三日月
+        elseif percent <= 45 then
+            phase = 2  -- 七日月
+        elseif percent <= 55 then
+            phase = 3  -- 上弦の月
+        elseif percent <= 88 then
+            phase = 4  -- 十日夜
+        elseif percent <= 95 then
+            phase = 5  -- 十三夜
+        else
+            phase = 6  -- 満月
+        end
+    else
+        if percent >= 98 then
+            phase = 6  -- 満月
+        elseif percent >= 90 then
+            phase = 7  -- 十六夜
+        elseif percent >= 57 then
+            phase = 8  -- 居待月
+        elseif percent >= 48 then
+            phase = 9  -- 下弦の月
+        elseif percent >= 31 then
+            -- 31%〜45% は公式ログの「二十日余月」
+            phase = 10 -- 二十日余月
+        elseif percent >= 7 then
+            phase = 11 -- 二十六夜
+        else
+            phase = 0  -- 新月
+        end
+    end
+
     return phase, percent, is_waxing
 end
 
@@ -330,7 +351,6 @@ ashita.events.register('load', 'compass_load', function()
     local f_size   = cfg.clock_font_size or 16
     local sub_size = math.max(11, math.floor(f_size * 0.78))
 
-    -- 曜日漢字専用オブジェクト: 潰れを防ぐためフチを1pxに最適化
     day_font_obj = gdi:create_object({
         font_family = CLOCK_FONT_NAME, font_height = f_size, font_flags = gdi.FontFlags.Bold,
         font_color = 0xFFFFFFFF, outline_width = 1, outline_color = 0xFF000000, visible = true,
@@ -661,7 +681,7 @@ ashita.events.register('d3d_present', 'compass_present', function()
 
         local next_y = row_top + sh + line_gap
 
-        -- 2行目: 月アイコン + 月齢テキスト (cfg.show_moon でトグル)
+        -- 2行目: 月アイコン + 月齢テキスト
         local moon_phase, moon_pct, is_waxing = calculate_moon_data()
         local m_info    = MOON_PHASE_INFO[moon_phase] or MOON_PHASE_INFO[0]
         local trend_str = is_waxing and '︿' or '﹀'
@@ -759,7 +779,7 @@ ashita.events.register('d3d_present', 'compass_settings_ui', function()
             local sub_s = math.max(11, math.floor(cfg.clock_font_size * 0.78))
             if day_font_obj   then day_font_obj:set_font_height(cfg.clock_font_size) end
             if clock_font_obj then clock_font_obj:set_font_height(cfg.clock_font_size) end
-            if moon_font_obj  then moon_font_obj:set_font_height(cfg.clock_font_size) end -- ここを cfg.clock_font_size に
+            if moon_font_obj  then moon_font_obj:set_font_height(cfg.clock_font_size) end
             if fish_font_obj  then fish_font_obj:set_font_height(sub_s) end
             if dig_font_obj   then dig_font_obj:set_font_height(sub_s) end
             changed = true
