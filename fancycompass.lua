@@ -36,19 +36,6 @@ local D3DX = ffi.C
 
 local _act_tex   = {}
 local _act_keep  = {}
-local _elem_tex  = {}
-local _elem_keep = {}
-
-local ELEM_NAMES = {
-    [0] = 'fire',
-    [1] = 'earth',
-    [2] = 'water',
-    [3] = 'wind',
-    [4] = 'ice',
-    [5] = 'thunder',
-    [6] = 'light',
-    [7] = 'dark',
-}
 
 local function load_activity_texture(name, filename)
     local ptr  = ffi.new('IDirect3DTexture8*[1]')
@@ -61,27 +48,38 @@ local function load_activity_texture(name, filename)
     end
 end
 
-local function load_element_textures()
-    for id, name in pairs(ELEM_NAMES) do
-        local ptr  = ffi.new('IDirect3DTexture8*[1]')
-        local path = ('%s\\imgs\\elements\\%s.png'):format(addon.path, name)
-        if D3DX.D3DXCreateTextureFromFileA(d3d8dev, path, ptr) == 0 then
-            local tex = ffi.new('IDirect3DTexture8*', ptr[0])
-            d3d.gc_safe_release(tex)
-            _elem_keep[name] = tex
-            _elem_tex[id]    = tonumber(ffi.cast('uint32_t', tex))
-        end
-    end
-end
-
 -- =========================================================================
--- GDI フォント設定
+-- GDI フォント設定 & 曜日テーブル
 -- =========================================================================
-local CLOCK_FONT_NAME = 'Segoe UI'
+local CLOCK_FONT_NAME = 'MyricaM M'
+local day_font_obj    = nil
 local clock_font_obj  = nil
 local moon_font_obj   = nil
 local fish_font_obj   = nil
 local dig_font_obj    = nil
+
+local JP_DAY_CHARS = {
+    [0] = '火',
+    [1] = '土',
+    [2] = '水',
+    [3] = '風',
+    [4] = '氷',
+    [5] = '雷',
+    [6] = '光',
+    [7] = '闇',
+}
+
+-- 属性カラー（純正風）
+local JP_DAY_COLORS = {
+    [0] = 0xFFFF4433, -- 火: 赤
+    [1] = 0xFFDDAA44, -- 土: 黄土
+    [2] = 0xFF3399FF, -- 水: 青
+    [3] = 0xFF44EE55, -- 風: 緑
+    [4] = 0xFF66FFFF, -- 氷: 水色
+    [5] = 0xFFFF66FF, -- 雷: 紫
+    [6] = 0xFFFFFF77, -- 光: 白黄
+    [7] = 0xFF9966FF, -- 闇: 紫
+}
 
 local cfg
 
@@ -327,30 +325,35 @@ ashita.events.register('load', 'compass_load', function()
 
     load_activity_texture('fish', 'fish.png')
     load_activity_texture('dig',  'dig.png')
-    load_element_textures()
 
     gdi:set_auto_render(false)
     local f_size   = cfg.clock_font_size or 16
     local sub_size = math.max(11, math.floor(f_size * 0.78))
 
-    clock_font_obj = gdi:create_object({
+    -- 曜日漢字専用オブジェクト: 潰れを防ぐためフチを1pxに最適化
+    day_font_obj = gdi:create_object({
         font_family = CLOCK_FONT_NAME, font_height = f_size, font_flags = gdi.FontFlags.Bold,
         font_color = 0xFFFFFFFF, outline_width = 1, outline_color = 0xFF000000, visible = true,
     }, false)
 
+    clock_font_obj = gdi:create_object({
+        font_family = CLOCK_FONT_NAME, font_height = f_size, font_flags = gdi.FontFlags.Bold,
+        font_color = 0xFFFFFFFF, outline_width = 2, outline_color = 0xFF000000, visible = true,
+    }, false)
+
     moon_font_obj = gdi:create_object({
-        font_family = CLOCK_FONT_NAME, font_height = sub_size, font_flags = gdi.FontFlags.Bold,
-        font_color = 0xFFE0E0E0, outline_width = 1, outline_color = 0xFF000000, visible = true,
+        font_family = CLOCK_FONT_NAME, font_height = f_size, font_flags = gdi.FontFlags.Bold,
+        font_color = 0xFFFFFFFF, outline_width = 2, outline_color = 0xFF000000, visible = true,
     }, false)
 
     fish_font_obj = gdi:create_object({
         font_family = CLOCK_FONT_NAME, font_height = sub_size, font_flags = gdi.FontFlags.Bold,
-        font_color = 0xFFCCCCCC, outline_width = 1, outline_color = 0xFF000000, visible = true,
+        font_color = 0xFFCCCCCC, outline_width = 2, outline_color = 0xFF000000, visible = true,
     }, false)
 
     dig_font_obj = gdi:create_object({
         font_family = CLOCK_FONT_NAME, font_height = sub_size, font_flags = gdi.FontFlags.Bold,
-        font_color = 0xFFCCCCCC, outline_width = 1, outline_color = 0xFF000000, visible = true,
+        font_color = 0xFFCCCCCC, outline_width = 2, outline_color = 0xFF000000, visible = true,
     }, false)
 
     last_login_status = AshitaCore:GetMemoryManager():GetPlayer():GetLoginStatus()
@@ -366,6 +369,7 @@ ashita.events.register('d3d_present', 'compass_present', function()
     end
 
     if not visible[1] or (cfg.hide_on_menu and menu.is_menu_open()) then
+        if day_font_obj   then day_font_obj:set_visible(false)   end
         if clock_font_obj then clock_font_obj:set_visible(false) end
         if moon_font_obj  then moon_font_obj:set_visible(false)  end
         if fish_font_obj  then fish_font_obj:set_visible(false)  end
@@ -589,10 +593,7 @@ ashita.events.register('d3d_present', 'compass_present', function()
             end
         end
 
-        -- =================================================================
-        -- 追加パーツ: 北(N)ゲートのミニ三角 & 自キャラ正面ポインター
-        -- =================================================================
-        -- 1. 北(N) ゲート直下のミニ三角インジケーター (▲)
+        -- 北(N) ゲートミニ三角
         do
             local tri_r = r * 0.96
             local tri_sz = 3.5 * size_scale
@@ -609,7 +610,7 @@ ashita.events.register('d3d_present', 'compass_present', function()
             )
         end
 
-        -- 2. 自キャラ正面（カメラ前方向 = 画面真上）のセンターポインター
+        -- 自キャラ正面ポインター
         do
             local ptr_in  = r * 0.28
             local ptr_out = r * 0.44
@@ -617,7 +618,7 @@ ashita.events.register('d3d_present', 'compass_present', function()
         end
 
         -- =================================================================
-        -- 下部ステータス表示 (行ごとの表示制御対応)
+        -- 下部ステータス表示 (純正風: 漢字 + 属性アーク)
         -- =================================================================
         local vana_time, vana_day = vana.get_time()
         local sh        = cfg.clock_font_size or 16
@@ -626,33 +627,30 @@ ashita.events.register('d3d_present', 'compass_present', function()
         local left_edge = cx - r - 16 * size_scale
         local row_top   = cy + r * tilt + 14 * size_scale + 7
 
-        local day_r   = (sh * 0.5) * 0.75
-        local day_cx  = left_edge + day_r + 2
-        local day_cy  = row_top + sh * 0.5
-        local stamp_x = left_edge + sh + 6 * size_scale
+        local day_char  = JP_DAY_CHARS[vana_day] or '火'
+        local day_col   = JP_DAY_COLORS[vana_day] or 0xFFFF4433
 
-        -- 1行目: 曜日アイコン (game-icons.net素材) + ヴァナ時間・座標
-        local elem_tex = _elem_tex[vana_day]
-        local icon_sz  = sh
-
-        if elem_tex then
-            local icon_x1 = left_edge
-            local icon_y1 = row_top + 2
-            dl:AddImage(elem_tex, { icon_x1, icon_y1 }, { icon_x1 + icon_sz, icon_y1 + icon_sz })
-            local mx, my = imgui.GetMousePos()
-            if mx >= icon_x1 and mx <= icon_x1 + icon_sz and my >= icon_y1 and my <= icon_y1 + icon_sz then
-                imgui.SetTooltip(vana.DAY_NAMES[vana_day] or 'Unknown')
-            end
-        else
-            -- 読み込めていない時のフォールバック（丸ドット）
-            dl:AddCircleFilled({ day_cx, day_cy }, day_r, vana.DAY_COLORS[vana_day] or 0xFFEEEEEE, 24)
-            dl:AddCircle({ day_cx, day_cy }, day_r, 0xCC000000, 24, 1.0)
-            local mx, my = imgui.GetMousePos()
-            if (mx - day_cx)^2 + (my - day_cy)^2 <= day_r^2 then
-                imgui.SetTooltip(vana.DAY_NAMES[vana_day] or 'Unknown')
-            end
+        -- 1. 曜日漢字
+        if day_font_obj then
+            day_font_obj:set_visible(true)
+            day_font_obj:set_position_x(left_edge)
+            day_font_obj:set_position_y(row_top)
+            day_font_obj:set_text(day_char)
+            day_font_obj:set_font_color(0xFFFFFFFF)
         end
 
+        -- 2. 純正風: 三日月弧（アーク）
+        local kanji_w = sh * 0.95
+        local arc_cx  = left_edge + kanji_w + 3
+        local arc_cy  = row_top + sh * 0.52
+        local arc_rad = sh * 0.38
+
+        dl:PathClear()
+        dl:PathArcTo({ arc_cx, arc_cy }, arc_rad, -pi * 0.45, pi * 0.45, 12)
+        dl:PathStroke(day_col, false, 2.5)
+
+        -- 3. ヴァナ時間・座標
+        local stamp_x = arc_cx + arc_rad + 6
         if clock_font_obj then
             clock_font_obj:set_visible(true)
             clock_font_obj:set_position_x(stamp_x)
@@ -669,10 +667,10 @@ ashita.events.register('d3d_present', 'compass_present', function()
         local trend_str = is_waxing and '︿' or '﹀'
 
         if cfg.show_moon then
-            draw_moon_icon(dl, left_edge + icon_sz * 0.5, next_y + sub_h * 0.5, day_r, moon_phase, is_waxing)
+            draw_moon_icon(dl, left_edge + 7, next_y + sub_h * 0.5, 6, moon_phase, is_waxing)
             if moon_font_obj then
                 moon_font_obj:set_visible(true)
-                moon_font_obj:set_position_x(stamp_x)
+                moon_font_obj:set_position_x(left_edge + 18)
                 moon_font_obj:set_position_y(next_y)
                 moon_font_obj:set_text(('%s %d%% (%s)'):format(m_info.name, moon_pct, trend_str))
             end
@@ -690,7 +688,7 @@ ashita.events.register('d3d_present', 'compass_present', function()
             end
             if fish_font_obj then
                 fish_font_obj:set_visible(true)
-                fish_font_obj:set_position_x(stamp_x)
+                fish_font_obj:set_position_x(left_edge + 18)
                 fish_font_obj:set_position_y(next_y)
                 fish_font_obj:set_text(m_info.fish)
                 fish_font_obj:set_font_color(m_info.fish_col)
@@ -703,7 +701,7 @@ ashita.events.register('d3d_present', 'compass_present', function()
             end
             if dig_font_obj then
                 dig_font_obj:set_visible(true)
-                dig_font_obj:set_position_x(stamp_x)
+                dig_font_obj:set_position_x(left_edge + 18)
                 dig_font_obj:set_position_y(next_y)
                 dig_font_obj:set_text(m_info.dig)
                 dig_font_obj:set_font_color(m_info.dig_col)
@@ -759,8 +757,9 @@ ashita.events.register('d3d_present', 'compass_settings_ui', function()
         if imgui.SliderInt('##clockfontsize', v_cfont, 10, 36) then
             cfg.clock_font_size = v_cfont[1]
             local sub_s = math.max(11, math.floor(cfg.clock_font_size * 0.78))
+            if day_font_obj   then day_font_obj:set_font_height(cfg.clock_font_size) end
             if clock_font_obj then clock_font_obj:set_font_height(cfg.clock_font_size) end
-            if moon_font_obj  then moon_font_obj:set_font_height(sub_s) end
+            if moon_font_obj  then moon_font_obj:set_font_height(cfg.clock_font_size) end -- ここを cfg.clock_font_size に
             if fish_font_obj  then fish_font_obj:set_font_height(sub_s) end
             if dig_font_obj   then dig_font_obj:set_font_height(sub_s) end
             changed = true
@@ -834,14 +833,13 @@ ashita.events.register('unload', 'compass_unload', function()
     apply_ingame_compass_patch(false)
     apply_clock_command(false)
     chat_anchor.shutdown()
+    day_font_obj   = nil
     clock_font_obj = nil
     moon_font_obj  = nil
     fish_font_obj  = nil
     dig_font_obj   = nil
     for k in pairs(_act_keep) do _act_keep[k] = nil end
     for k in pairs(_act_tex) do _act_tex[k] = nil end
-    for k in pairs(_elem_keep) do _elem_keep[k] = nil end
-    for k in pairs(_elem_tex) do _elem_tex[k] = nil end
     gdi:destroy_interface()
 end)
 
